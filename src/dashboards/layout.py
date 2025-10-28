@@ -527,13 +527,28 @@ def create_layout(app, data_context: Dict[str, object]) -> html.Div:
                                             id="main-tabs",
                                             value="tab-timelines",
                                             children=[
-                                                dcc.Tab(label="Timelines & predictability", value="tab-timelines"),
-                                                dcc.Tab(label="Drivers & benchmarks", value="tab-drivers"),
-                                                dcc.Tab(label="Impact & scenarios", value="tab-scenarios"),
-                                                dcc.Tab(label="Data QA", value="tab-qa"),
+                                                dcc.Tab(
+                                                    label="Timelines & predictability",
+                                                    value="tab-timelines",
+                                                    children=_build_timeline_tab(),
+                                                ),
+                                                dcc.Tab(
+                                                    label="Drivers & benchmarks",
+                                                    value="tab-drivers",
+                                                    children=_build_drivers_tab(),
+                                                ),
+                                                dcc.Tab(
+                                                    label="Impact & scenarios",
+                                                    value="tab-scenarios",
+                                                    children=_build_scenarios_tab(),
+                                                ),
+                                                dcc.Tab(
+                                                    label="Data QA",
+                                                    value="tab-qa",
+                                                    children=_build_qa_tab(),
+                                                ),
                                             ],
                                         ),
-                                        html.Div(id="tab-content"),
                                     ]
                                 )
                             ]
@@ -547,11 +562,3 @@ def create_layout(app, data_context: Dict[str, object]) -> html.Div:
         fluid=True,
         className="app-container",
     )
-
-
-TAB_CONTENT_MAP = {
-    "tab-timelines": _build_timeline_tab(),
-    "tab-drivers": _build_drivers_tab(),
-    "tab-scenarios": _build_scenarios_tab(),
-    "tab-qa": _build_qa_tab(),
-}

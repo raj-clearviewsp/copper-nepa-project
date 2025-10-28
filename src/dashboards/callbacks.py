@@ -15,7 +15,6 @@ import plotly.graph_objects as go
 from dash import Input, Output, callback, dcc, html
 
 from src.data.scenario import ScenarioParameters, apply_scenario
-from src.dashboards import layout as layout_mod
 from src.utils.config import NepaConfig
 
 
@@ -41,10 +40,6 @@ def _format_days(value: float | int | None) -> str:
 
 
 def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
-    @app.callback(Output("tab-content", "children"), Input("main-tabs", "value"))
-    def render_tab(tab_value: str):
-        return layout_mod.TAB_CONTENT_MAP.get(tab_value, html.Div())
-
     @app.callback(
         Output("store-filtered", "data"),
         Input("store-action-summary", "data"),
