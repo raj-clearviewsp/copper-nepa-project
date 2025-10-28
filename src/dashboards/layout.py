@@ -14,7 +14,7 @@ FILTER_STYLE = {"marginBottom": "1rem"}
 
 
 def _build_filter_dropdown(id_, label, options, multi=True):
-    return dbc.FormGroup(
+    return html.Div(
         [
             dbc.Label(label, className="filter-label"),
             dcc.Dropdown(
@@ -61,7 +61,7 @@ def _build_filter_panel(summary_df) -> dbc.Card:
                         "Tailings Type",
                         sorted(summary_df["tailings_type"].dropna().unique()),
                     ),
-                    dbc.FormGroup(
+                    html.Div(
                         [
                             dbc.Label("Litigation"),
                             dbc.RadioItems(
@@ -77,7 +77,7 @@ def _build_filter_panel(summary_df) -> dbc.Card:
                         ],
                         style=FILTER_STYLE,
                     ),
-                    dbc.FormGroup(
+                    html.Div(
                         [
                             dbc.Label("Cooperating Agencies"),
                             dcc.RangeSlider(
