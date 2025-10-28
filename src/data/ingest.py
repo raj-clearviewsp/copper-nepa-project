@@ -37,6 +37,31 @@ DATE_PRECISION_SUFFIX = "_precision"
 IMPUTED_SUFFIX = "_imputed"
 
 
+def _resolve_precision_column(column: str, available: Iterable[str]) -> Optional[str]:
+    """Return the matching precision column for a date field, if present."""
+
+    candidates = [f"{column}{DATE_PRECISION_SUFFIX}"]
+    if column.endswith("_date"):
+        candidates.append(f"{column[:-5]}{DATE_PRECISION_SUFFIX}")
+    if column.endswith("_period_end"):
+        candidates.append(f"{column[: -len('_period_end')]}{DATE_PRECISION_SUFFIX}")
+    if column.endswith("_period_start"):
+        candidates.append(f"{column[: -len('_period_start')]}{DATE_PRECISION_SUFFIX}")
+    if column.endswith("_start"):
+        candidates.append(f"{column[:-6]}{DATE_PRECISION_SUFFIX}")
+    if column.endswith("_end"):
+        candidates.append(f"{column[:-4]}{DATE_PRECISION_SUFFIX}")
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if candidate in available:
+            return candidate
+    return None
+
+
 @dataclass
 class LoadedData:
     mines: pd.DataFrame
@@ -95,13 +120,19 @@ def _impute_date(value: pd.Timestamp | float | str | None, precision: str, *, is
 def _apply_date_imputations(df: pd.DataFrame, columns: Iterable[str], *, start_columns: Iterable[str] = ()) -> pd.DataFrame:
     df = df.copy()
     start_columns = set(start_columns)
+    precision_columns = set(df.columns)
     for column in columns:
-        precision_col = f"{column}{DATE_PRECISION_SUFFIX}"
+        precision_col = _resolve_precision_column(column, precision_columns)
         is_start = column in start_columns
         imputed_flags: List[bool] = []
         values: List[pd.Timestamp | None] = []
         for _, row in df.iterrows():
-            precision = str(row.get(precision_col, "day") or "day")
+            if precision_col is None:
+                precision = "day"
+            else:
+                precision = (
+                    str(row.get(precision_col, "day") or "day").strip().lower()
+                )
             value, imputed = _impute_date(row.get(column), precision, is_start=is_start)
             values.append(value)
             imputed_flags.append(imputed)
@@ -152,12 +183,15 @@ def load_workbook(path: str | Path) -> LoadedData:
 
     # Apply date imputations according to precision rules
     if not actions.empty:
+        # Only treat true "start" style fields as starts when applying
+        # precision-based imputations. Milestone announcement dates such as
+        # NOA_DEIS or NOA_FEIS are treated as points in time, so month-level
+        # precision should resolve to the *end* of the month. Otherwise the
+        # downstream step durations (e.g., step B: scoping_end → NOA_DEIS)
+        # become negative when both fall in the same month.
         step_start_cols = [
             "scoping_start",
             "DEIS_comment_open",
-            "NOA_DEIS_date",
-            "NOA_FEIS_date",
-            "FEIS_comment_period_end",
             "NOI_date",
         ]
         actions = _apply_date_imputations(
