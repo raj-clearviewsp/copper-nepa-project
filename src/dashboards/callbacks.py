@@ -177,6 +177,7 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
         Output("kpi-delay-days-context", "children"),
         Output("kpi-litigation-context", "children"),
         Output("kpi-cap-context", "children"),
+        Output("timeline-story", "children"),
         Output("fig-waterfall", "figure"),
         Output("waterfall-annotation", "children"),
         Output("fig-variance", "figure"),
@@ -188,6 +189,7 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
         Output("fig-agency-benchmark", "figure"),
         Output("fig-cooperation", "figure"),
         Output("fig-litigation", "figure"),
+        Output("litigation-annotation", "children"),
         Output("fig-copper", "figure"),
         Output("copper-summary", "children"),
         Output("fig-distribution", "figure"),
@@ -220,17 +222,19 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
                 "",
                 "",
                 "",
+                html.Div("No completed actions in view.", className="insight-body"),
                 empty_fig,
-                "No data",
-                empty_fig,
-                "",
-                [],
+                html.Div("No data available for the selected filters.", className="insight-body"),
                 empty_fig,
                 "",
                 [],
                 empty_fig,
+                "",
+                [],
                 empty_fig,
                 empty_fig,
+                empty_fig,
+                html.Div("No permit view for current filters.", className="insight-body"),
                 empty_fig,
                 "",
                 empty_fig,
@@ -258,6 +262,26 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             elif "project_id" in permits_df.columns:
                 permits_df = permits_df[permits_df["project_id"].isin(summary_df["project_id"])]
 
+        timeline_story = html.Div("No completed actions in view.", className="insight-body")
+        waterfall_note = html.Div(
+            "No step data available for the current slice.", className="insight-body"
+        )
+        variance_note = html.Div(
+            "Insufficient data to assess variability.", className="insight-body"
+        )
+        pareto_note = html.Div(
+            "No recorded delays in the NEPA window for these actions.", className="insight-body"
+        )
+        litigation_annotation = html.Div(
+            "No permit view for current filters.", className="insight-body"
+        )
+        pareto_fig = empty_fig
+        affected_data: List[Dict[str, object]] = []
+        top_step = None
+        top_step_days = None
+        delay_focus_step = None
+        delay_focus_days = 0
+
         n_actions = len(summary_df)
         median_total = summary_df["total_days"].median() if not summary_df.empty else np.nan
         median_delay = summary_df["delay_days_total"].median() if not summary_df.empty else np.nan
@@ -283,7 +307,6 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             waterfall_fig = empty_fig
             step_summary = []
             variance_fig = empty_fig
-            variance_note = ""
         else:
             step_stats = (
                 steps_df.groupby("step")
@@ -321,7 +344,54 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
                 margin=dict(t=30),
                 yaxis_title="Days",
             )
-            waterfall_note = f"Median total days: {_format_days(step_stats['median_days'].sum())}."
+            total_step_median = step_stats["median_days"].fillna(0).sum()
+            delay_median_total = step_stats["delay_median"].fillna(0).sum()
+            if not step_stats["median_days"].dropna().empty:
+                top_step = step_stats["median_days"].astype(float).idxmax()
+                top_step_days = step_stats.loc[top_step, "median_days"]
+            if not step_stats["delay_median"].dropna().empty:
+                delay_focus_step = step_stats["delay_median"].astype(float).idxmax()
+                delay_focus_days = step_stats.loc[delay_focus_step, "delay_median"]
+            bullets = []
+            if top_step is not None and pd.notna(top_step_days):
+                bullets.append(
+                    html.Li(
+                        f"Step {top_step} is longest at {int(round(top_step_days)):,} median days.",
+                    )
+                )
+            if (
+                delay_focus_step is not None
+                and pd.notna(delay_focus_days)
+                and delay_focus_days > 0
+            ):
+                bullets.append(
+                    html.Li(
+                        f"Delays peak in Step {delay_focus_step}, adding {int(round(delay_focus_days)):,} days to the median action.",
+                    )
+                )
+            bullets.append(html.Li(f"Sample size: N={n_actions} actions."))
+            waterfall_note = html.Div(
+                [
+                    html.P(
+                        [
+                            html.Span(
+                                f"{int(round(total_step_median)):,} days",
+                                className="insight-highlight",
+                            ),
+                            " median span across steps A–E.",
+                            html.Br(),
+                            html.Span(
+                                f"{int(round(delay_median_total)):,} days",
+                                className="insight-highlight",
+                            ),
+                            " attributable to in-window delays.",
+                        ],
+                        className="insight-lead",
+                    ),
+                    html.Ul(bullets, className="insight-list"),
+                ],
+                className="insight-body",
+            )
 
             variance_df = steps_df.dropna(subset=["days"]).copy()
             variance_df["step"] = variance_df["step"].astype(str)
@@ -348,24 +418,39 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
                 summary_stats.append(stats)
                 cv = group["days"].std(ddof=0) / group["days"].mean() if group["days"].mean() else np.nan
                 variance_annotations.append((step, cv))
-            if variance_annotations:
-                valid = [item for item in variance_annotations if not np.isnan(item[1])]
-                if valid:
-                    highest = max(valid, key=lambda x: x[1])
-                    lowest = min(valid, key=lambda x: x[1])
-                    variance_note = (
-                        f"Highest variance: Step {highest[0]} (CV {highest[1]:.2f}); "
-                        f"Lowest variance: Step {lowest[0]} (CV {lowest[1]:.2f}). N={n_actions}"
-                    )
-                else:
-                    variance_note = f"N={n_actions}"
+            valid = [item for item in variance_annotations if not np.isnan(item[1])]
+            if valid:
+                highest = max(valid, key=lambda x: x[1])
+                lowest = min(valid, key=lambda x: x[1])
+                variance_note = html.Div(
+                    [
+                        html.P(
+                            "Predictability differs sharply by milestone stage.",
+                            className="insight-lead",
+                        ),
+                        html.Ul(
+                            [
+                                html.Li(
+                                    f"Step {highest[0]} shows the widest variability (CV {highest[1]:.2f})."
+                                ),
+                                html.Li(
+                                    f"Step {lowest[0]} is most predictable (CV {lowest[1]:.2f})."
+                                ),
+                                html.Li(f"Coverage: N={n_actions} actions."),
+                            ],
+                            className="insight-list",
+                        ),
+                    ],
+                    className="insight-body",
+                )
             else:
-                variance_note = f"N={n_actions}"
+                variance_note = html.Div(
+                    "Not enough variability data for this slice.", className="insight-body"
+                )
             step_summary = summary_stats
         # Delay Pareto
         if steps_df.empty:
             pareto_fig = empty_fig
-            pareto_note = ""
             affected_data = []
         else:
             delay_records: List[Tuple[str, float]] = []
@@ -382,7 +467,6 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             )
             if delay_df.empty:
                 pareto_fig = empty_fig
-                pareto_note = "No recorded delays in window."
                 affected_data = []
             else:
                 pareto_df = delay_df.groupby("category", as_index=False)["days"].sum().sort_values("days", ascending=False)
@@ -435,7 +519,44 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
                     .to_dict("records")
                 )
                 total_delay = delay_df["days"].sum()
-                pareto_note = f"Total in-window delay days: {_format_days(total_delay)} across {len(delay_df)} records."
+                top_categories = pareto_df.head(3)
+                bullets = []
+                if total_delay > 0:
+                    for _, row in top_categories.iterrows():
+                        share = row["days"] / total_delay if total_delay else 0
+                        bullets.append(
+                            html.Li(
+                                f"{row['category']}: {int(round(row['days'])):,} days ({share:.0%})."
+                            )
+                        )
+                if selected_category and selected_category in pareto_df["category"].values:
+                    focus_days = (
+                        pareto_df.loc[
+                            pareto_df["category"] == selected_category, "days"
+                        ].iloc[0]
+                    )
+                    bullets.insert(
+                        0,
+                        html.Li(
+                            f"Focused on {selected_category} covering {int(round(focus_days)):,} delay-days.",
+                        ),
+                    )
+                pareto_note = html.Div(
+                    [
+                        html.P(
+                            [
+                                html.Span(
+                                    f"{int(round(total_delay)):,} delay-days",
+                                    className="insight-highlight",
+                                ),
+                                " captured after overlap adjustments.",
+                            ],
+                            className="insight-lead",
+                        ),
+                        html.Ul(bullets, className="insight-list") if bullets else None,
+                    ],
+                    className="insight-body",
+                )
 
         # Agency benchmarking heatmap
         if summary_df.empty:
@@ -508,11 +629,46 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
                     color_continuous_scale="Reds",
                 )
                 litigation_fig.update_layout(template="plotly_white", margin=dict(t=40, b=80))
+                total_counts = permit_rates["count"].sum()
+                weighted_rate = (
+                    (permit_rates["litigation_rate"] * permit_rates["count"]).sum() / total_counts
+                    if total_counts
+                    else float("nan")
+                )
+                if not permit_rates.empty:
+                    top_permit = permit_rates.sort_values("litigation_rate", ascending=False).iloc[0]
+                    bullets = [
+                        html.Li(
+                            f"{top_permit['permit_type']} faces {top_permit['litigation_rate']:.1f}% litigation (n={top_permit['count']})."
+                        )
+                    ]
+                    if len(permit_rates) > 1:
+                        bottom_permit = permit_rates.sort_values("litigation_rate", ascending=True).iloc[0]
+                        bullets.append(
+                            html.Li(
+                                f"Lowest exposure: {bottom_permit['permit_type']} at {bottom_permit['litigation_rate']:.1f}% (n={bottom_permit['count']})."
+                            )
+                        )
+                    lead_text = (
+                        [
+                            html.Span(f"{weighted_rate:.1f}%", className="insight-highlight"),
+                            " weighted litigation rate across permits.",
+                        ]
+                        if not np.isnan(weighted_rate)
+                        else ["Permit litigation exposure varies by type."]
+                    )
+                    litigation_annotation = html.Div(
+                        [
+                            html.P(lead_text, className="insight-lead"),
+                            html.Ul(bullets, className="insight-list"),
+                        ],
+                        className="insight-body",
+                    )
 
         # Scenario metrics
         if scenario_steps.empty or scenario_summary.empty:
             copper_fig = empty_fig
-            copper_annotation = ""
+            copper_annotation = html.Div("Select a scenario to see copper impacts.", className="insight-body")
             distribution_fig = empty_fig
             movers_data = []
             assumptions = "Select a scenario to view impacts."
@@ -522,6 +678,44 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             )
             distribution_fig = _build_distribution_figure(summary_df, scenario_summary)
             assumptions = _render_assumptions(params)
+            copper_annotation = html.Div(copper_annotation, className="insight-body")
+
+        story_bullets = []
+        if top_step is not None and top_step_days is not None and not np.isnan(top_step_days):
+            story_bullets.append(
+                html.Li(
+                    f"Step {top_step} alone absorbs {int(round(top_step_days)):,} median days.",
+                )
+            )
+        if not np.isnan(litigation_pct):
+            story_bullets.append(
+                html.Li(f"Litigation touches {litigation_pct:.1f}% of actions in view."),
+            )
+        if not np.isnan(cap_pct):
+            story_bullets.append(
+                html.Li(f"Cap compliance: {cap_pct:.1f}% meeting NOI→ROD/EA limits."),
+            )
+        if n_actions < 10:
+            story_bullets.append(html.Li("Sample <10 actions — interpret cautiously."))
+        if not np.isnan(median_total):
+            lead_children = [
+                html.Span(f"{int(round(median_total)):,} days", className="insight-highlight"),
+                " median NEPA window",
+            ]
+            if not np.isnan(median_delay) and median_delay > 0:
+                lead_children.extend(
+                    [
+                        "; ",
+                        html.Span(f"{int(round(median_delay)):,} days", className="insight-highlight"),
+                        " of in-window delay.",
+                    ]
+                )
+            else:
+                lead_children.append(" with limited recorded delay.")
+            timeline_children = [html.P(lead_children, className="insight-lead")]
+            if story_bullets:
+                timeline_children.append(html.Ul(story_bullets, className="insight-list"))
+            timeline_story = html.Div(timeline_children, className="insight-body")
 
         qa_data = qa_df.to_dict("records")
 
@@ -534,6 +728,7 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             kpi_delay_ctx,
             kpi_lit_ctx,
             kpi_cap_ctx,
+            timeline_story,
             waterfall_fig,
             waterfall_note,
             variance_fig,
@@ -545,6 +740,7 @@ def register_callbacks(app: dash.Dash, config: NepaConfig) -> None:
             agency_fig,
             coop_fig,
             litigation_fig,
+            litigation_annotation,
             copper_fig,
             copper_annotation,
             distribution_fig,
@@ -591,7 +787,18 @@ def _build_copper_outputs(summary_df, projects_df, mines_df):
         legend_y=-0.2,
     )
     median_deferred = merged["deferred_copper"].median()
-    copper_annotation = f"Deferred copper (P50): {median_deferred:.1f} kt; Total={merged['deferred_copper'].sum():.1f} kt."
+    total_deferred = merged["deferred_copper"].sum()
+    top_project = merged_sorted.iloc[0] if not merged_sorted.empty else None
+    highlight = (
+        f"Top mover: {top_project['nepa_id']} with {top_project['deferred_copper']:.1f} kt deferred."
+        if top_project is not None
+        else ""
+    )
+    copper_annotation = (
+        f"P50 deferred copper {median_deferred:.1f} kt; portfolio impact {total_deferred:.1f} kt across {len(merged)} actions. {highlight}".strip()
+    )
+    if not copper_annotation.endswith("."):
+        copper_annotation += "."
     movers = (
         merged[["nepa_id", "total_days", "scenario_total_days"]]
         .assign(days_saved=lambda df: df["total_days"] - df["scenario_total_days"])
