@@ -349,7 +349,8 @@ def derive_tables(data: LoadedData, config: NepaConfig) -> Tuple[pd.DataFrame, p
         had_litigation = _determine_litigation(row, action_delays, action_permits, (window_start, window_end))
         cohort_year = _assign_cohort_year(window_start)
         cohort_decade = _assign_cohort_decade(cohort_year)
-        is_complete = str(row.get("status") or "").lower() in {"complete", "completed", "closed", "rod"}
+        complete_statuses = {"complete", "completed", "closed", "rod", "withdrawn", "decision issued"}
+        is_complete = str(row.get("status") or "").strip().lower() in complete_statuses
         if not config.include_active_actions and not is_complete:
             flag_reason = flag_reason or "Active action excluded"
 

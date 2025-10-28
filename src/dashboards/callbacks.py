@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from io import StringIO
 from typing import Dict, List, Tuple
 
 import dash
@@ -18,10 +19,19 @@ from src.dashboards import layout as layout_mod
 from src.utils.config import NepaConfig
 
 
-def _df_from_store(data: str) -> pd.DataFrame:
-    if not data:
+def _df_from_store(data) -> pd.DataFrame:
+    """Normalize dcc.Store payloads into DataFrames.
+
+    Stores backed by :func:`to_json_records` now provide native Python lists of
+    dictionaries, but older sessions or downstream callbacks may still hand us
+    a JSON string. Handle both to make troubleshooting data issues easier.
+    """
+
+    if data is None or data == "" or data == []:
         return pd.DataFrame()
-    return pd.read_json(data, orient="records")
+    if isinstance(data, str):
+        return pd.read_json(StringIO(data), orient="records")
+    return pd.DataFrame(data)
 
 
 def _format_days(value: float | int | None) -> str:

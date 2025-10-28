@@ -234,9 +234,15 @@ def load_workbook(path: str | Path) -> LoadedData:
     )
 
 
-def to_json_records(df: pd.DataFrame) -> str:
-    """Serialize a DataFrame to JSON records for Dash stores."""
+def to_json_records(df: pd.DataFrame) -> List[Dict[str, object]]:
+    """Return a list of records suitable for storing in Dash dcc.Store."""
 
     if df.empty:
-        return "[]"
-    return df.to_json(orient="records", date_format="iso")
+        return []
+    # Use pandas to serialize timestamps with ISO formatting, then decode the
+    # JSON string back into native Python objects so Dash stores receive a
+    # JSON-serialisable structure instead of a raw string. This avoids relying
+    # on ``pd.read_json`` parsing of literal strings on the callback side and
+    # works cleanly across pandas versions.
+    json_str = df.to_json(orient="records", date_format="iso")
+    return json.loads(json_str)
