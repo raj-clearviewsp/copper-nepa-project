@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 import dash_bootstrap_components as dbc
-from dash import dcc, html
+from dash import dcc, html, dash_table
 
 from src.data.ingest import to_json_records
 
@@ -183,7 +183,7 @@ def _build_timeline_tab():
                                 dbc.CardHeader("Step summary"),
                                 dbc.CardBody(
                                     dcc.Loading(
-                                        dcc.DataTable(
+                                        dash_table.DataTable(
                                             id="table-step-summary",
                                             columns=[
                                                 {"name": "Step", "id": "step"},
@@ -233,7 +233,7 @@ def _build_drivers_tab():
                             [
                                 dbc.CardHeader("Affected actions"),
                                 dbc.CardBody(
-                                    dcc.DataTable(
+                                    dash_table.DataTable(
                                         id="table-affected-actions",
                                         columns=[
                                             {"name": "NEPA ID", "id": "nepa_id"},
@@ -439,7 +439,7 @@ def _build_scenarios_tab():
                             [
                                 dbc.CardHeader("Top movers"),
                                 dbc.CardBody(
-                                    dcc.DataTable(
+                                    dash_table.DataTable(
                                         id="table-top-movers",
                                         columns=[
                                             {"name": "NEPA ID", "id": "nepa_id"},
@@ -479,7 +479,7 @@ def _build_qa_tab():
                 [
                     dbc.CardHeader("Data QA flags"),
                     dbc.CardBody(
-                        dcc.DataTable(
+                        dash_table.DataTable(
                             id="table-qa",
                             columns=[
                                 {"name": "NEPA ID", "id": "nepa_id"},
